@@ -25,7 +25,8 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      ],
+      "package": "com.barnes_vidit.waaice"
     },
     "plugins": [
       "expo-router",
