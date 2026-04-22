@@ -1,0 +1,13 @@
+{
+  "digest_times": [
+    "08:00",
+    "22:00"
+  ],
+  "tts_speed": 1.1,
+  "stt_language": "en-IN",
+  "companion_url": "http://192.168.1.x:3000",
+  "summarize_threshold": 3,
+  "auto_resolve_threshold": 10,
+  "gemma_model": "gemma-4-27b-it",
+  "whisper_api_url": "http://localhost:9000/asr"
+}
