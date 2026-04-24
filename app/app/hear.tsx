@@ -45,13 +45,16 @@ export default function HearScreen() {
       setQueue(chats);
       if (chats.length === 0) {
         setStatusText('No unread messages. You\'re all caught up!');
+        await speak('You have no unread messages.');
         setStage('done');
       } else {
         setStage('reading');
         readCurrentChat(chats, 0);
       }
     } catch (err: any) {
-      setStatusText(`Error: ${err.message}`);
+      // Distinguish error from genuinely empty — don't show the ✅ all-caught-up UI
+      setStatusText(`Couldn't load messages: ${err.message}`);
+      await speak('Sorry, I had trouble loading your messages. Please try again.');
       setStage('done');
     }
   };
@@ -69,12 +72,31 @@ export default function HearScreen() {
     const threshold = settings.summarize_threshold ?? 3;
     let readText: string;
 
-    if (chat.messages.length >= threshold) {
-      const { summary } = await summarize(chat.messages.map((m) => ({ text: m.text })));
-      readText = summary;
+    if (chat.messages.length === 0) {
+      // Messages arrived but weren't stored — handle gracefully
+      readText = `${chat.name} sent ${chat.unreadCount} message${chat.unreadCount > 1 ? 's' : ''}, but I couldn't retrieve the content.`;
     } else {
-      const texts = chat.messages.map((m) => m.text).join('. ');
-      readText = `${chat.name} says: ${texts}`;
+      const allText = chat.messages.map((m) => m.text).join(' ');
+      const wordCount = allText.split(/\s+/).filter(Boolean).length;
+      // Summarize if: too many messages OR a single message is too long (> 60 words)
+      const shouldSummarize = chat.messages.length >= threshold || wordCount > 60;
+
+      if (shouldSummarize) {
+        const { summary } = await summarize(chat.messages.map((m) => ({ sender: m.sender, text: m.text })));
+        readText = summary;
+        // Store the full text so user can ask to expand it
+        chat._fullText = allText;
+        chat._isSummarized = true;
+      } else {
+        if (chat.isGroup) {
+          // Group: attribute each message to its sender
+          const parts = chat.messages.map((m) => m.sender ? `${m.sender}: ${m.text}` : m.text);
+          readText = `In ${chat.name}: ${parts.join('. ')}`;
+        } else {
+          readText = `${chat.name} says: ${allText}`;
+        }
+        chat._isSummarized = false;
+      }
     }
 
     setStatusText(readText);
@@ -85,12 +107,13 @@ export default function HearScreen() {
 
   const startCommandTimeout = useCallback((chatList: UnreadChat[], index: number) => {
     if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
+    // 8 seconds before first nudge — give the user time to process what they heard
     commandTimeoutRef.current = setTimeout(async () => {
       await speak('Say Reply, Next, Skip, or Repeat.');
       commandTimeoutRef.current = setTimeout(() => {
         advanceChat(chatList, index);
-      }, 3000);
-    }, 3000);
+      }, 5000);
+    }, 8000);
   }, [speak]);
 
   const clearCommandTimeout = () => {
@@ -122,7 +145,7 @@ export default function HearScreen() {
       return;
     }
 
-    const intent = await parseIntent(transcript);
+    const intent = await parseIntent(transcript, 'command');
 
     // BUG-04: setLoading(false) is moved inside each branch — branches that call
     // advanceChat() navigate away, so we must not update state after them.
@@ -143,6 +166,19 @@ export default function HearScreen() {
         setLoading(false);
         readCurrentChat(queue, currentIndex);
         break;
+      case 'read_full':
+        if (currentChat?._isSummarized && currentChat?._fullText) {
+          setLoading(false);
+          setStatusText(currentChat._fullText);
+          await speak(currentChat._fullText);
+          setStage('awaiting');
+          startCommandTimeout(queue, currentIndex);
+        } else {
+          setLoading(false);
+          await speak('That was the full message.');
+          startCommandTimeout(queue, currentIndex);
+        }
+        break;
       case 'ignore_group':
         if (currentChat?.isGroup) {
           await ignoreGroup(currentChat.jid);
@@ -162,6 +198,11 @@ export default function HearScreen() {
         }
         setLoading(false);
         advanceChat(queue, currentIndex);
+        break;
+      case 'stop':
+        setLoading(false);
+        await speak('Okay, going back.');
+        router.back();
         break;
       default:
         await speak("Didn't catch that. Say Reply, Next, Skip, or Repeat.");
@@ -221,13 +262,18 @@ export default function HearScreen() {
   }
 
   if (stage === 'done') {
+    // H7: show distinct UI for error vs genuinely empty inbox
+    const isError = statusText.startsWith("Couldn't");
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <Text style={{ fontSize: 56 }}>✅</Text>
-          <Text style={styles.doneText}>All caught up!</Text>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backBtnText}>Back to Home</Text>
+          <Text style={{ fontSize: 56 }}>{isError ? '⚠️' : '✅'}</Text>
+          <Text style={[styles.doneText, isError && { color: '#e74c3c' }]}>
+            {isError ? 'Something went wrong' : 'All caught up!'}
+          </Text>
+          <Text style={styles.doneSubText}>{statusText}</Text>
+          <TouchableOpacity style={[styles.backBtn, isError && { borderColor: '#e74c3c' }]} onPress={() => router.back()}>
+            <Text style={[styles.backBtnText, isError && { color: '#e74c3c' }]}>Back to Home</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -311,6 +357,7 @@ const styles = StyleSheet.create({
   status: { color: '#ccc', fontSize: 16, lineHeight: 24, textAlign: 'center' },
   hint: { color: '#555', fontSize: 14, textAlign: 'center' },
   doneText: { color: '#27ae60', fontSize: 26, fontWeight: '700', marginTop: 12 },
+  doneSubText: { color: '#666', fontSize: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 4 },
   backBtn: { marginTop: 24, backgroundColor: '#1a3a2e', paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12 },
   backBtnText: { color: '#27ae60', fontSize: 16, fontWeight: '600' },
   progressBar: { alignItems: 'center', paddingBottom: 8 },

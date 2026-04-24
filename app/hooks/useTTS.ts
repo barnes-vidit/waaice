@@ -1,15 +1,21 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import * as Speech from 'expo-speech';
 import { loadSettings } from '../utils/settings';
+import type { AppSettings } from '../utils/settings';
 
 export function useTTS() {
   const speakingRef = useRef(false);
+  // T1: cache settings so loadSettings() isn't called on every speak() invocation
+  const settingsRef = useRef<AppSettings | null>(null);
+
+  useEffect(() => {
+    loadSettings().then((s) => { settingsRef.current = s; });
+  }, []);
 
   const speak = useCallback(async (text: string): Promise<void> => {
-    const settings = await loadSettings();
+    // Use cached settings; fall back to a fresh load if cache isn't ready yet
+    const settings = settingsRef.current ?? await loadSettings();
 
-    // BUG-11: wrap in try/finally so speakingRef is always reset even if
-    // Speech.speak() throws synchronously before any callback fires.
     return new Promise((resolve) => {
       try {
         speakingRef.current = true;
@@ -41,7 +47,12 @@ export function useTTS() {
     speakingRef.current = false;
   }, []);
 
+  // Call this when settings are saved so the cache is refreshed immediately
+  const reloadSettings = useCallback(() => {
+    loadSettings().then((s) => { settingsRef.current = s; });
+  }, []);
+
   const isSpeaking = () => speakingRef.current;
 
-  return { speak, stop, isSpeaking };
+  return { speak, stop, isSpeaking, reloadSettings };
 }

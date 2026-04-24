@@ -8,6 +8,6 @@
   "companion_url": "http://192.168.1.x:3000",
   "summarize_threshold": 3,
   "auto_resolve_threshold": 10,
-  "gemma_model": "gemma-4-27b-it",
+  "gemma_model": "gemma-4-26b-a4b-it",
   "whisper_api_url": "http://localhost:9000/asr"
 }

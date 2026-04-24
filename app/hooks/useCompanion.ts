@@ -8,6 +8,7 @@ async function getBaseUrl(): Promise<string> {
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const base = await getBaseUrl();
+  if (!base) throw new Error('Companion URL not configured');
   const res = await fetch(`${base}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -24,7 +25,10 @@ export interface UnreadChat {
   name: string;
   unreadCount: number;
   isGroup: boolean;
-  messages: Array<{ text: string; fromMe: boolean; timestamp: number }>;
+  messages: Array<{ text: string; fromMe: boolean; timestamp: number; sender?: string }>;
+  // Set by hear.tsx after reading — used for expand-after-summary
+  _fullText?: string;
+  _isSummarized?: boolean;
 }
 
 export interface DigestResult {
@@ -65,13 +69,13 @@ export function useCompanion() {
       body: JSON.stringify({ contact, message }),
     }), []);
 
-  const parseIntent = useCallback((transcript: string) =>
+  const parseIntent = useCallback((transcript: string, context: 'compose' | 'command' = 'compose') =>
     apiFetch<Intent>('/parse-intent', {
       method: 'POST',
-      body: JSON.stringify({ transcript }),
+      body: JSON.stringify({ transcript, context }),
     }), []);
 
-  const summarize = useCallback((messages: Array<{ text: string }>) =>
+  const summarize = useCallback((messages: Array<{ text: string; sender?: string }>) =>
     apiFetch<{ summary: string }>('/summarize', {
       method: 'POST',
       body: JSON.stringify({ messages }),
@@ -96,5 +100,14 @@ export function useCompanion() {
 
   const getMe = useCallback(() => apiFetch<{ jid: string }>('/me'), []);
 
-  return { status, getUnread, send, parseIntent, summarize, refineMessage, getContacts, getDigest, ignoreGroup, getMe };
+  const getDebugLogs = useCallback(() =>
+    apiFetch<Array<{ ts: string; level: string; tag: string; msg: string }>>('/debug/logs'), []);
+
+  const getStoreStats = useCallback(() =>
+    apiFetch<{ chats: number; messages: number; contacts: number; chatsWithUnread: number }>('/debug/store'), []);
+
+  const clearDebugLogs = useCallback(() =>
+    apiFetch<{ ok: boolean }>('/debug/logs', { method: 'DELETE' }), []);
+
+  return { status, getUnread, send, parseIntent, summarize, refineMessage, getContacts, getDigest, ignoreGroup, getMe, getDebugLogs, getStoreStats, clearDebugLogs };
 }

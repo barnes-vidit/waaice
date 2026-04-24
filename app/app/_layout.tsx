@@ -17,6 +17,8 @@ export default function RootLayout() {
         <Stack.Screen name="go" options={{ title: 'Go — Compose' }} />
         <Stack.Screen name="hear" options={{ title: 'Hear — Read & Reply' }} />
         <Stack.Screen name="digest" options={{ title: 'Daily Digest' }} />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="debug" options={{ title: '🔍 Debug Logs' }} />
       </Stack>
     </>
   );

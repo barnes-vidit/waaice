@@ -56,6 +56,8 @@ export function useSTT(): UseSTTResult {
     if (!recordingRef.current) return '';
     try {
       setState('processing');
+      // T2: 400ms tail buffer — captures trailing audio if user lifts finger mid-word
+      await new Promise<void>((r) => setTimeout(r, 400));
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
@@ -84,29 +86,24 @@ export function useSTT(): UseSTTResult {
   return { state, transcript, startRecording, stopRecording, reset, error };
 }
 
-// BUG-06: accept companionUrl directly — stopRecording already loaded settings once,
-// so we avoid a second redundant loadSettings() call here.
 async function transcribeAudio(uri: string, language: string, companionUrl: string): Promise<string> {
-  // Send to companion for Whisper transcription, or fallback to empty string
-  try {
-    const formData = new FormData();
-    // Use a generic audio type so the server relies on the file extension/content
-    formData.append('audio', {
-      uri,
-      type: 'audio/x-m4a',
-      name: 'recording.m4a',
-    } as any);
-    formData.append('language', language);
+  const formData = new FormData();
+  formData.append('audio', {
+    uri,
+    type: 'audio/x-m4a',
+    name: 'recording.m4a',
+  } as any);
+  formData.append('language', language);
 
-    const res = await fetch(`${companionUrl}/transcribe`, {
-      method: 'POST',
-      body: formData,
-    });
+  const res = await fetch(`${companionUrl}/transcribe`, {
+    method: 'POST',
+    body: formData,
+  });
 
-    if (!res.ok) throw new Error('Transcription failed');
-    const data = await res.json();
-    return data.transcript ?? '';
-  } catch {
-    return '';
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(`Transcription failed (${res.status}): ${err.error ?? res.statusText}`);
   }
+  const data = await res.json();
+  return data.transcript ?? '';
 }

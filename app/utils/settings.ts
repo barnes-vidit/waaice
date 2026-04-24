@@ -12,7 +12,7 @@ export interface AppSettings {
 }
 
 const defaults: AppSettings = {
-  companion_url: 'http://192.168.1.100:3000',
+  companion_url: '',
   tts_speed: 1.1,
   stt_language: 'en-IN',
   summarize_threshold: 3,

@@ -3,19 +3,28 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import fs from 'fs';
-import { initWhatsApp, getConnectionStatus, getUnreadChats, sendMessage, getContacts, getOwnJid } from './whatsapp';
+import os from 'os';
+import path from 'path';
+import { initWhatsApp, getConnectionStatus, getUnreadChats, sendMessage, getContacts, getOwnJid, getStoreStats } from './whatsapp';
 import { parseIntent, summarizeMessages, refineMessage, transcribeAudio } from './gemma';
 import { buildDigest } from './digest';
 import { loadJSON, saveJSON } from './storage';
+import { log, getLogs, clearLogs } from './logger';
 
-// BUG-08: multer does NOT auto-create its dest directory — ensure it exists before use
-const UPLOAD_DIR = '/tmp/waaice-uploads/';
+// Use os.tmpdir() so the path is correct on both Windows and Linux
+const UPLOAD_DIR = path.join(os.tmpdir(), 'waaice-uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({ dest: UPLOAD_DIR });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Log every incoming request
+app.use((req, _res, next) => {
+  log('HTTP', `${req.method} ${req.path}`);
+  next();
+});
 
 const PORT = process.env.PORT || 3000;
 
@@ -52,10 +61,10 @@ app.post('/send', async (req, res) => {
 });
 
 app.post('/parse-intent', async (req, res) => {
-  const { transcript } = req.body;
+  const { transcript, context } = req.body;
   if (!transcript) return res.status(400).json({ error: 'transcript required' });
   try {
-    const intent = await parseIntent(transcript);
+    const intent = await parseIntent(transcript, context ?? 'compose');
     res.json(intent);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -118,6 +127,7 @@ app.post('/ignore-group', (req, res) => {
 app.post('/transcribe', upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'audio file required' });
   const language = (req.body.language as string) || 'en';
+  log('HTTP:transcribe', `File: ${req.file.originalname} size:${req.file.size} lang:${language}`);
   try {
     const transcript = await transcribeAudio(req.file.path, language);
     res.json({ transcript });
@@ -126,7 +136,22 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Companion service running on port ${PORT}`);
+// ─── Debug endpoints ────────────────────────────────────────────────────────
+app.get('/debug/logs', (_req, res) => {
+  res.json(getLogs());
+});
+
+app.delete('/debug/logs', (_req, res) => {
+  clearLogs();
+  res.json({ ok: true });
+});
+
+app.get('/debug/store', (_req, res) => {
+  res.json(getStoreStats());
+});
+
+// Bind to 0.0.0.0 so phones on the same Wi-Fi can reach this server.
+app.listen(PORT, '0.0.0.0', () => {
+  log('Server', `Companion running on http://0.0.0.0:${PORT} — phone: http://<YOUR_PC_IP>:${PORT}`);
   initWhatsApp();
 });

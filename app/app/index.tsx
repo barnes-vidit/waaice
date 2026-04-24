@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { useCompanion } from '../hooks/useCompanion';
 import { loadSettings } from '../utils/settings';
@@ -16,6 +17,15 @@ Notifications.setNotificationHandler({
 export default function HomeScreen() {
   const router = useRouter();
   const { status } = useCompanion();
+  const [needsSetup, setNeedsSetup] = useState(false);
+
+  // Re-check every time screen gains focus so the banner disappears after
+  // the user saves a URL in Settings and navigates back.
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings().then((s) => setNeedsSetup(!s.companion_url));
+    }, [])
+  );
 
   useEffect(() => {
     scheduleDailyDigests();
@@ -30,33 +40,77 @@ export default function HomeScreen() {
     return () => sub.remove();
   }, []);
 
-  const statusColor = status === 'connected' ? '#27ae60' : status === 'connecting' ? '#f39c12' : '#e74c3c';
-  const statusLabel = status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting…' : 'Disconnected';
+  const statusColor =
+    status === 'connected' ? '#27ae60' :
+    status === 'connecting' ? '#f39c12' : '#e74c3c';
+  const statusLabel =
+    status === 'connected' ? 'Connected' :
+    status === 'connecting' ? 'Connecting…' : 'Disconnected';
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
+
+        {/* ─── Header ──────────────────────────────────────────── */}
         <View style={styles.header}>
           <Text style={styles.title}>Waaice</Text>
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
+          {/* Gear button */}
+          <TouchableOpacity
+            id="settings-btn"
+            style={styles.gearBtn}
+            onPress={() => router.push('/settings')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.gearIcon}>⚙️</Text>
+          </TouchableOpacity>
         </View>
 
+        {/* ─── Setup Required Banner ────────────────────────────── */}
+        {needsSetup && (
+          <TouchableOpacity
+            id="setup-banner"
+            style={styles.setupBanner}
+            onPress={() => router.push('/settings')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.setupBannerIcon}>⚠️</Text>
+            <View style={styles.setupBannerText}>
+              <Text style={styles.setupBannerTitle}>Setup Required</Text>
+              <Text style={styles.setupBannerSub}>
+                Tap to enter your companion server IP before using the app.
+              </Text>
+            </View>
+            <Text style={styles.setupBannerArrow}>›</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ─── Main Buttons ─────────────────────────────────────── */}
         <View style={styles.buttons}>
-          <TouchableOpacity style={[styles.mainBtn, styles.goBtn]} onPress={() => router.push('/go')}>
+          <TouchableOpacity
+            id="go-btn"
+            style={[styles.mainBtn, styles.goBtn]}
+            onPress={() => router.push('/go')}
+          >
             <Text style={styles.mainBtnIcon}>🟢</Text>
             <Text style={styles.mainBtnLabel}>Go</Text>
             <Text style={styles.mainBtnSub}>Compose & Send</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.mainBtn, styles.hearBtn]} onPress={() => router.push('/hear')}>
+          <TouchableOpacity
+            id="hear-btn"
+            style={[styles.mainBtn, styles.hearBtn]}
+            onPress={() => router.push('/hear')}
+          >
             <Text style={styles.mainBtnIcon}>🔵</Text>
             <Text style={styles.mainBtnLabel}>Hear</Text>
             <Text style={styles.mainBtnSub}>Read & Reply</Text>
           </TouchableOpacity>
         </View>
+
       </View>
     </SafeAreaView>
   );
@@ -99,10 +153,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     justifyContent: 'space-between',
     paddingVertical: 48,
+    gap: 20,
   },
+
+  // ── Header
   header: {
     alignItems: 'center',
     gap: 12,
+    position: 'relative',
   },
   title: {
     color: '#fff',
@@ -124,6 +182,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  gearBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 0,
+    padding: 4,
+  },
+  gearIcon: {
+    fontSize: 24,
+  },
+
+  // ── Setup banner
+  setupBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#1a1200',
+    borderWidth: 1,
+    borderColor: '#f39c12',
+    borderRadius: 14,
+    padding: 16,
+  },
+  setupBannerIcon: { fontSize: 22 },
+  setupBannerText: { flex: 1, gap: 2 },
+  setupBannerTitle: { color: '#f39c12', fontSize: 14, fontWeight: '700' },
+  setupBannerSub: { color: '#a07010', fontSize: 12, lineHeight: 17 },
+  setupBannerArrow: { color: '#f39c12', fontSize: 22, fontWeight: '300' },
+
+  // ── Feature buttons
   buttons: {
     flex: 1,
     justifyContent: 'center',
@@ -150,16 +236,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#2980b9',
   },
-  mainBtnIcon: {
-    fontSize: 52,
-  },
-  mainBtnLabel: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  mainBtnSub: {
-    color: '#888',
-    fontSize: 15,
-  },
+  mainBtnIcon: { fontSize: 52 },
+  mainBtnLabel: { color: '#fff', fontSize: 32, fontWeight: '800' },
+  mainBtnSub: { color: '#888', fontSize: 15 },
 });

@@ -37,6 +37,14 @@
           "icon": "./assets/icon.png",
           "color": "#1a1a2e"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "scheme": "waaice",
@@ -49,7 +57,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "6b177cd0-1666-42a6-9ec4-6bac543b6e8c"
+        "projectId": "9156af22-7fd7-4def-85b2-10b01aac0876"
       }
     }
   }
